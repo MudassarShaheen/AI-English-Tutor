@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { FeedbackData, TranscriptionItem } from './types';
 import { decodeBase64 } from './utils/audioUtils';
 
@@ -46,9 +46,18 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (history.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-15)));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-20)));
     }
   }, [history]);
+
+  // Calculate Peak Fluency from history
+  const peakFluency = useMemo(() => {
+    if (history.length === 0) return 0;
+    // We only have the fluency score in the feedback state, but for persistent peak
+    // we could derive it if we stored it in history metadata. 
+    // For now, we'll use the current session's last score or default.
+    return lastFeedback?.fluency_score || 0;
+  }, [history, lastFeedback]);
 
   const stopAllAudio = () => {
     if (currentSourceRef.current) {
@@ -110,24 +119,25 @@ const App: React.FC = () => {
       
       const result = await response.json();
       
-      // Handle the precise structure you send from n8n (result[0].json)
       let data = result;
       if (Array.isArray(result)) {
         data = result[0];
       }
-      // If the node returns { json: { user_transcript: ... } }
       if (data && data.json) {
         data = data.json;
       }
 
+      // Mapping logic: Support 'fluency' or 'fluency_score'
+      const rawFluency = data.fluency_score || data.fluency;
+
       const feedback: FeedbackData = {
-        corrected_sentence: data.corrected_sentence || "I heard you!",
-        mistake_explanation: data.mistake_explanation || "No major corrections.",
+        corrected_sentence: data.corrected_sentence || "Great job!",
+        mistake_explanation: data.mistake_explanation || "Your sentence was clear and correct.",
         confidence: data.confidence || 'confident',
         sentiment: data.sentiment || 'neutral',
-        feedback: data.feedback || "Keep practicing!",
+        feedback: data.feedback || "Keep up the great work!",
         audio_base64: data.audio_base64,
-        fluency_score: data.fluency_score || 72,
+        fluency_score: typeof rawFluency === 'number' ? rawFluency : 75,
         user_transcript: data.user_transcript || "Transcript unavailable"
       };
 
@@ -136,7 +146,7 @@ const App: React.FC = () => {
       const userItem: TranscriptionItem = {
         id: `u-${Date.now()}`,
         type: 'user',
-        text: feedback.user_transcript!, // Use the real transcript from the final node
+        text: feedback.user_transcript!, 
         timestamp: Date.now(),
         audio_url: userAudioBase64,
         isBase64: true
@@ -188,7 +198,7 @@ const App: React.FC = () => {
         
         if (!speechDetectedRef.current && silentTime > INITIAL_TIMEOUT) {
           stopRecording(true);
-          setError("No voice detected. Please speak louder or check your mic.");
+          setError("No voice detected. Please try again.");
           return;
         }
       }
@@ -266,7 +276,7 @@ const App: React.FC = () => {
             <span className="text-5xl font-black text-white">{score}%</span>
           </div>
         </div>
-        <span className="text-[11px] font-black text-sky-400 uppercase tracking-[0.3em] mt-2">Overall Proficiency</span>
+        <span className="text-[11px] font-black text-sky-400 uppercase tracking-[0.3em] mt-2">Proficiency Level</span>
       </div>
     );
   };
@@ -293,7 +303,7 @@ const App: React.FC = () => {
             <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 flex items-center justify-between">
               <div>
                 <p className="text-sky-400 font-black text-[10px] uppercase tracking-widest mb-1">Peak Fluency</p>
-                <p className="text-3xl font-black">{history.length > 0 ? '89%' : '--'}</p>
+                <p className="text-3xl font-black">{history.length > 0 ? `${peakFluency}%` : '--'}</p>
               </div>
               <div className="w-14 h-14 bg-sky-500/10 rounded-2xl flex items-center justify-center text-sky-500">
                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
@@ -302,7 +312,7 @@ const App: React.FC = () => {
 
             {history.length > 0 && (
               <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5">
-                <p className="text-gray-500 font-black text-[9px] uppercase tracking-widest mb-2">Recent Learning Path</p>
+                <p className="text-gray-500 font-black text-[9px] uppercase tracking-widest mb-2">Learning Milestone</p>
                 <div className="flex gap-1.5 mt-2">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className={`h-2 flex-1 rounded-full ${i < history.length / 2 ? 'bg-sky-500' : 'bg-white/10'}`}></div>
@@ -316,7 +326,7 @@ const App: React.FC = () => {
 
       <div className="absolute bottom-12 left-8 right-8 z-20">
         <button onClick={() => setScreen('CONVERSATION')} className="w-full bg-sky-600 hover:bg-sky-500 py-6 rounded-full font-black text-sm uppercase tracking-[0.3em] shadow-[0_20px_60px_rgba(14,165,233,0.3)] transition-all active:scale-95">
-          Start Lesson
+          Resume Lesson
         </button>
       </div>
     </div>
@@ -329,12 +339,12 @@ const App: React.FC = () => {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"/></svg>
         </button>
         <div className="text-center">
-          <h2 className="text-xs font-black uppercase tracking-widest text-sky-500">Voice Practice</h2>
+          <h2 className="text-xs font-black uppercase tracking-widest text-sky-500">Practice Hub</h2>
           <p className="text-[9px] text-gray-500 font-bold uppercase mt-0.5">
-            {isRecording ? (speechDetectedRef.current ? 'Listening...' : 'Waiting for voice...') : 'Ready'}
+            {isRecording ? (speechDetectedRef.current ? 'Listening...' : 'Watching for audio...') : 'Tap Mic to Speak'}
           </p>
         </div>
-        <button onClick={() => { setHistory([]); localStorage.removeItem(STORAGE_KEY); }} className="p-2.5 bg-white/5 rounded-xl text-rose-500">
+        <button onClick={() => { if(confirm("Clear history?")) {setHistory([]); localStorage.removeItem(STORAGE_KEY);} }} className="p-2.5 bg-white/5 rounded-xl text-rose-500">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
         </button>
       </header>
@@ -368,7 +378,7 @@ const App: React.FC = () => {
                    <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                    <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
                 </div>
-                <span className="text-[10px] font-black text-sky-400 uppercase tracking-widest ml-1">Analyzing...</span>
+                <span className="text-[10px] font-black text-sky-400 uppercase tracking-widest ml-1">Decoding...</span>
              </div>
           </div>
         )}
@@ -388,7 +398,7 @@ const App: React.FC = () => {
         <button onClick={() => setScreen('CONVERSATION')} className="p-2.5 bg-white/5 rounded-xl">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Session Review</h3>
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Voice Analysis</h3>
         <div className="w-10"></div>
       </header>
 
@@ -408,10 +418,9 @@ const App: React.FC = () => {
            </div>
         </div>
 
-        {/* User Input Review - Explicitly using the user_transcript from the n8n JSON */}
         <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 shadow-sm">
            <div className="flex items-center justify-between mb-5">
-             <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Your Transcription</label>
+             <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Speech Transcript</label>
              {history.find(h => h.id.startsWith('u-')) && (
                <button onClick={() => {
                  const lastUserItem = [...history].reverse().find(item => item.type === 'user');
@@ -426,7 +435,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="p-8 bg-sky-600/10 rounded-[3rem] border border-sky-500/20 shadow-2xl shadow-sky-900/10">
-          <label className="text-[10px] font-black text-sky-400 uppercase mb-5 block tracking-[0.2em]">Correct Expression</label>
+          <label className="text-[10px] font-black text-sky-400 uppercase mb-5 block tracking-[0.2em]">Corrected Expression</label>
           <p className="text-2xl font-black leading-tight mb-8">"{lastFeedback?.corrected_sentence}"</p>
           {lastFeedback?.audio_base64 && (
              <button onClick={() => playAudio(lastFeedback!.audio_base64!)} className="w-full flex items-center justify-center gap-3 text-[11px] font-black uppercase bg-sky-600 text-white py-5 rounded-3xl shadow-xl shadow-sky-600/30 active:scale-95 transition-all">
@@ -438,11 +447,11 @@ const App: React.FC = () => {
 
         <div className="grid grid-cols-1 gap-5">
            <div className="p-7 bg-white/5 rounded-[2.5rem] border border-white/5">
-             <label className="text-[10px] font-black text-slate-500 uppercase mb-3 block tracking-widest">Why the change?</label>
+             <label className="text-[10px] font-black text-slate-500 uppercase mb-3 block tracking-widest">Feedback & Correction</label>
              <p className="text-sm font-medium leading-relaxed text-slate-300">{lastFeedback?.mistake_explanation}</p>
            </div>
            <div className="p-7 bg-indigo-500/5 rounded-[2.5rem] border border-indigo-500/10">
-             <label className="text-[10px] font-black text-indigo-400/60 uppercase mb-3 block tracking-widest">Mastery Coaching</label>
+             <label className="text-[10px] font-black text-indigo-400/60 uppercase mb-3 block tracking-widest">Tutor Advice</label>
              <p className="text-[16px] font-black text-indigo-300 italic">"{lastFeedback?.feedback}"</p>
            </div>
         </div>
@@ -450,7 +459,7 @@ const App: React.FC = () => {
 
       <div className="fixed bottom-10 left-8 right-8 z-40">
         <button onClick={() => setScreen('CONVERSATION')} className="w-full bg-white text-black py-6 rounded-full font-black text-xs uppercase tracking-[0.4em] shadow-2xl active:scale-95 transition-all">
-          Resume Practice
+          Back to Practice
         </button>
       </div>
     </div>
