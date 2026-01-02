@@ -53,9 +53,6 @@ const App: React.FC = () => {
   // Calculate Peak Fluency from history
   const peakFluency = useMemo(() => {
     if (history.length === 0) return 0;
-    // We only have the fluency score in the feedback state, but for persistent peak
-    // we could derive it if we stored it in history metadata. 
-    // For now, we'll use the current session's last score or default.
     return lastFeedback?.fluency_score || 0;
   }, [history, lastFeedback]);
 
@@ -127,8 +124,8 @@ const App: React.FC = () => {
         data = data.json;
       }
 
-      // Mapping logic: Support 'fluency' or 'fluency_score'
-      const rawFluency = data.fluency_score || data.fluency;
+      // Mapping logic: Support 'Fluency' (capitalized), 'fluency_score', or 'fluency'
+      const rawFluency = data.Fluency !== undefined ? data.Fluency : (data.fluency_score || data.fluency);
 
       const feedback: FeedbackData = {
         corrected_sentence: data.corrected_sentence || "Great job!",
